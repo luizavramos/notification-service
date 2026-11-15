@@ -4,9 +4,11 @@ import br.com.motorfraude.contracts.FraudAlert;
 import br.com.motorfraude.contracts.Severity;
 import br.com.motorfraude.notification.application.gateway.AlertRepository;
 import br.com.motorfraude.notification.application.gateway.DeliveryRepository;
+import br.com.motorfraude.notification.application.gateway.DeliveryMetrics;
 import br.com.motorfraude.notification.application.gateway.UnitOfWork;
 import br.com.motorfraude.notification.domain.ChannelPolicy;
 import br.com.motorfraude.notification.domain.Delivery;
+import br.com.motorfraude.notification.domain.DeliveryStatus;
 import br.com.motorfraude.notification.domain.SuppressionPolicy;
 import java.time.Clock;
 import java.time.Instant;
@@ -23,9 +25,16 @@ public final class RegisterAlertUseCase {
     private final SuppressionPolicy suppression;
     private final UnitOfWork unitOfWork;
     private final Clock clock;
+    private final DeliveryMetrics metrics;
 
     public RegisterAlertUseCase(AlertRepository alerts, DeliveryRepository deliveries, SuppressionPolicy suppression, UnitOfWork unitOfWork,
             Clock clock) {
+        this(alerts, deliveries, suppression, unitOfWork, clock, DeliveryMetrics.NONE);
+    }
+
+    public RegisterAlertUseCase(AlertRepository alerts, DeliveryRepository deliveries, SuppressionPolicy suppression, UnitOfWork unitOfWork,
+            Clock clock, DeliveryMetrics metrics) {
+        this.metrics = metrics;
         this.unitOfWork = unitOfWork;
         this.alerts = alerts;
         this.deliveries = deliveries;
@@ -54,6 +63,9 @@ public final class RegisterAlertUseCase {
                     ? Delivery.suppressed(alert.alertId(), channel, now)
                     : Delivery.pending(alert.alertId(), channel, now);
             deliveries.insertIfAbsent(delivery);
+            if (delivery.status() == DeliveryStatus.SUPPRESSED) {
+                metrics.result(channel, "suppressed");
+            }
         }
     }
 }

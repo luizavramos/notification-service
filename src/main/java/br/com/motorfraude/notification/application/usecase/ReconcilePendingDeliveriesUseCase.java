@@ -1,6 +1,7 @@
 package br.com.motorfraude.notification.application.usecase;
 
 import br.com.motorfraude.notification.application.gateway.DeliveryRepository;
+import br.com.motorfraude.notification.application.gateway.DeliveryMetrics;
 import br.com.motorfraude.notification.domain.Delivery;
 import java.time.Clock;
 import java.time.Duration;
@@ -18,9 +19,16 @@ public final class ReconcilePendingDeliveriesUseCase {
     private final List<Duration> retryDelays;
     private final Duration grace;
     private final int limit;
+    private final DeliveryMetrics metrics;
 
     public ReconcilePendingDeliveriesUseCase(DeliveryRepository deliveries, DeliveryDispatcher dispatcher, Clock clock, List<Duration> retryDelays,
             Duration grace, int limit) {
+        this(deliveries, dispatcher, clock, retryDelays, grace, limit, DeliveryMetrics.NONE);
+    }
+
+    public ReconcilePendingDeliveriesUseCase(DeliveryRepository deliveries, DeliveryDispatcher dispatcher, Clock clock, List<Duration> retryDelays,
+            Duration grace, int limit, DeliveryMetrics metrics) {
+        this.metrics = metrics;
         this.deliveries = deliveries;
         this.dispatcher = dispatcher;
         this.clock = clock;
@@ -43,6 +51,9 @@ public final class ReconcilePendingDeliveriesUseCase {
                 LOG.warn("reconciliador: não foi possível despachar {}:{}; fica para a próxima rodada: {}", delivery.alertId(), delivery.channel(),
                         e.toString());
             }
+        }
+        if (dispatched > 0) {
+            metrics.reconciled(dispatched);
         }
         return dispatched;
     }

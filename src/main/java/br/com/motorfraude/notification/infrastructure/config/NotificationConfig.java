@@ -7,9 +7,11 @@ import br.com.motorfraude.notification.adapters.gateway.channels.ResilienceSetti
 import br.com.motorfraude.notification.adapters.gateway.channels.ResilientChannel;
 import br.com.motorfraude.notification.adapters.gateway.channels.SmsChannel;
 import br.com.motorfraude.notification.adapters.gateway.contacts.HttpContactDirectory;
+import br.com.motorfraude.notification.adapters.gateway.micrometer.MicrometerDeliveryMetrics;
 import br.com.motorfraude.notification.adapters.gateway.postgres.TransactionalUnitOfWork;
 import br.com.motorfraude.notification.application.gateway.AlertRepository;
 import br.com.motorfraude.notification.application.gateway.ContactDirectory;
+import br.com.motorfraude.notification.application.gateway.DeliveryMetrics;
 import br.com.motorfraude.notification.application.gateway.DeliveryRepository;
 import br.com.motorfraude.notification.application.gateway.NotificationChannel;
 import br.com.motorfraude.notification.application.gateway.RetryScheduler;
@@ -20,6 +22,9 @@ import br.com.motorfraude.notification.application.usecase.ReconcilePendingDeliv
 import br.com.motorfraude.notification.application.usecase.RegisterAlertUseCase;
 import br.com.motorfraude.notification.domain.Channel;
 import br.com.motorfraude.notification.domain.SuppressionPolicy;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.time.Clock;
@@ -59,7 +64,12 @@ public class NotificationConfig {
     }
 
     @Bean
-    Map<Channel, NotificationChannel> channels(HttpClient http, NotificationProperties properties) {
+    DeliveryMetrics deliveryMetrics(MeterRegistry registry) {
+        return new MicrometerDeliveryMetrics(registry);
+    }
+
+    @Bean
+    Map<Channel, NotificationChannel> channels(HttpClient http, NotificationProperties properties, MeterRegistry registry) {
         var providers = properties.providers();
         var r = properties.resilience();
         var settings = new ResilienceSettings(r.maxAttempts(), r.initialBackoff(), r.backoffMultiplier(), r.jitter(), r.slidingWindowSize(),
@@ -70,29 +80,39 @@ public class NotificationConfig {
                 new PushChannel(http, URI.create(providers.push().url()), providers.push().timeout()),
                 new EmailChannel(http, URI.create(providers.email().url()), providers.email().timeout()),
                 new SmsChannel(http, URI.create(providers.sms().url()), providers.sms().timeout()))) {
-            channels.put(channel.channel(), new ResilientChannel(channel, settings));
+            var resilient = new ResilientChannel(channel, settings);
+            bindCircuitState(registry, channel.channel().name(), resilient.circuitBreaker());
+            channels.put(channel.channel(), resilient);
         }
         return channels;
     }
 
     @Bean
     RegisterAlertUseCase registerAlertUseCase(AlertRepository alerts, DeliveryRepository deliveries, UnitOfWork unitOfWork, Clock clock,
-            NotificationProperties properties) {
-        return new RegisterAlertUseCase(alerts, deliveries, new SuppressionPolicy(properties.suppressionWindow()), unitOfWork, clock);
+            NotificationProperties properties, DeliveryMetrics metrics) {
+        return new RegisterAlertUseCase(alerts, deliveries, new SuppressionPolicy(properties.suppressionWindow()), unitOfWork, clock, metrics);
     }
 
     @Bean
     DeliveryDispatcher deliveryDispatcher(AlertRepository alerts, DeliveryRepository deliveries, Map<Channel, NotificationChannel> channels,
-            ContactDirectory contacts, RetryScheduler scheduler, Clock clock, NotificationProperties properties) {
+            ContactDirectory contacts, RetryScheduler scheduler, Clock clock, NotificationProperties properties,
+            DeliveryMetrics metrics) {
         var delays = properties.retry().steps().stream().map(NotificationProperties.Retry.Step::delay).toList();
-        return new DeliveryDispatcher(new DispatchDeliveryUseCase(alerts, deliveries, channels, contacts, scheduler, clock, delays));
+        return new DeliveryDispatcher(new DispatchDeliveryUseCase(alerts, deliveries, channels, contacts, scheduler, clock, delays, metrics));
     }
 
     @Bean
     ReconcilePendingDeliveriesUseCase reconcilePendingDeliveriesUseCase(DeliveryRepository deliveries, DeliveryDispatcher dispatcher, Clock clock,
-            NotificationProperties properties) {
+            NotificationProperties properties, DeliveryMetrics metrics) {
         var delays = properties.retry().steps().stream().map(NotificationProperties.Retry.Step::delay).toList();
         var reconciler = properties.reconciler();
-        return new ReconcilePendingDeliveriesUseCase(deliveries, dispatcher, clock, delays, reconciler.grace(), reconciler.limit());
+        return new ReconcilePendingDeliveriesUseCase(deliveries, dispatcher, clock, delays, reconciler.grace(), reconciler.limit(), metrics);
+    }
+
+    private static void bindCircuitState(MeterRegistry registry, String name, CircuitBreaker breaker) {
+        for (var state : CircuitBreaker.State.values()) {
+            Gauge.builder("resilience4j.circuitbreaker.state", breaker, b -> b.getState() == state ? 1 : 0)
+                    .tag("name", name).tag("state", state.name().toLowerCase(java.util.Locale.ROOT)).register(registry);
+        }
     }
 }

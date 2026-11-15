@@ -57,6 +57,7 @@ class AlertConsumerLoopTest {
     private final ScriptedChannel push = new ScriptedChannel(Channel.PUSH);
     private final ScriptedChannel email = new ScriptedChannel(Channel.EMAIL);
     private final MutableClock clock = new MutableClock(NOW);
+    private final br.com.motorfraude.notification.fakes.RecordingDeliveryMetrics metrics = new br.com.motorfraude.notification.fakes.RecordingDeliveryMetrics();
     private final List<Runnable> queued = new ArrayList<>();
     private final MockProducer<String, String> dlqProducer = new MockProducer<>(true, null, new StringSerializer(), new StringSerializer());
     private final List<String> alertsAtCommit = new ArrayList<>();
@@ -96,7 +97,7 @@ class AlertConsumerLoopTest {
         var topics = new LinkedHashMap<Duration, String>();
         topics.put(Duration.ofMinutes(1), "alerts.retry.1m");
         var dlq = new KafkaRetryScheduler(dlqProducer, clock, topics, "alerts.dlq");
-        loop = new AlertConsumerLoop(consumer, TOPIC, register, dispatcher::dispatch, queued::add, dlq, clock, Duration.ofSeconds(5));
+        loop = new AlertConsumerLoop(consumer, TOPIC, register, dispatcher::dispatch, queued::add, dlq, clock, Duration.ofSeconds(5), metrics);
         loop.initialize();
         consumer.rebalance(List.of(PARTITION));
         consumer.updateBeginningOffsets(Map.of(PARTITION, 0L));
@@ -189,6 +190,7 @@ class AlertConsumerLoopTest {
         assertThat(new String(dlqProducer.history().getFirst().headers().lastHeader("dlq.reason").value(), StandardCharsets.UTF_8)).isNotBlank();
         assertThat(alertStore.find(A2)).isPresent();
         assertThat(committed()).isEqualTo(3);
+        assertThat(metrics.deadLetters).containsExactly("INVALID_ALERT", "INVALID_ALERT");
     }
 
     @Test
@@ -223,7 +225,7 @@ class AlertConsumerLoopTest {
                 (alertId, channel) -> {
                     throw new IllegalStateException("provedor explodiu");
                 }, Runnable::run, new KafkaRetryScheduler(dlqProducer, clock, Map.of(Duration.ofMinutes(1), "alerts.retry.1m"), "alerts.dlq"), clock,
-                Duration.ofSeconds(5));
+                Duration.ofSeconds(5), metrics);
         loopWithBrokenDispatch.initialize();
         consumer.rebalance(List.of(PARTITION));
         consumer.updateBeginningOffsets(Map.of(PARTITION, 0L));

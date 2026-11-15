@@ -4,6 +4,7 @@ import br.com.motorfraude.notification.adapters.controller.kafka.AlertConsumerLo
 import br.com.motorfraude.notification.adapters.controller.kafka.ConsumerLoopRunner;
 import br.com.motorfraude.notification.adapters.controller.kafka.RetryConsumerLoop;
 import br.com.motorfraude.notification.adapters.gateway.kafka.KafkaRetryScheduler;
+import br.com.motorfraude.notification.application.gateway.DeliveryMetrics;
 import br.com.motorfraude.notification.application.usecase.DeliveryDispatcher;
 import br.com.motorfraude.notification.application.usecase.ReconcilePendingDeliveriesUseCase;
 import br.com.motorfraude.notification.application.usecase.RegisterAlertUseCase;
@@ -45,13 +46,13 @@ public class KafkaConfig {
 
     @Bean
     ConsumersLifecycle consumersLifecycle(NotificationProperties properties, RegisterAlertUseCase register, DeliveryDispatcher dispatcher,
-            ReconcilePendingDeliveriesUseCase reconciler, KafkaRetryScheduler deadLetters, Clock clock) {
+            ReconcilePendingDeliveriesUseCase reconciler, KafkaRetryScheduler deadLetters, Clock clock, DeliveryMetrics metrics) {
         var kafka = properties.kafka();
         var runners = new java.util.ArrayList<ConsumerLoopRunner>();
 
         var alerts = new KafkaConsumer<String, String>(consumerConfig(kafka, kafka.groupId(), "notification-alerts"));
         var alertLoop = new AlertConsumerLoop(alerts, kafka.alertsTopic(), register, dispatcher::dispatch, Executors.newVirtualThreadPerTaskExecutor(),
-                deadLetters, clock, kafka.failureBackoff());
+                deadLetters, clock, kafka.failureBackoff(), metrics);
         runners.add(new ConsumerLoopRunner("alert-consumer", alerts, alertLoop::initialize, alertLoop::pollOnce));
 
         for (var step : properties.retry().steps()) {

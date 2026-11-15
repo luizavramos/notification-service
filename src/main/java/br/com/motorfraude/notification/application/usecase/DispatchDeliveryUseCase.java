@@ -4,6 +4,7 @@ import br.com.motorfraude.contracts.FraudAlert;
 import br.com.motorfraude.notification.application.gateway.AlertRepository;
 import br.com.motorfraude.notification.application.gateway.Contact;
 import br.com.motorfraude.notification.application.gateway.ContactDirectory;
+import br.com.motorfraude.notification.application.gateway.DeliveryMetrics;
 import br.com.motorfraude.notification.application.gateway.DeliveryRepository;
 import br.com.motorfraude.notification.application.gateway.NotificationChannel;
 import br.com.motorfraude.notification.application.gateway.NotificationChannel.Outbound;
@@ -41,6 +42,7 @@ public final class DispatchDeliveryUseCase {
     private final RetryScheduler scheduler;
     private final Clock clock;
     private final List<Duration> retryDelays;
+    private final DeliveryMetrics metrics;
 
     public DispatchDeliveryUseCase(AlertRepository alerts, DeliveryRepository deliveries, Map<Channel, NotificationChannel> channels,
             ContactDirectory contacts, RetryScheduler scheduler, Clock clock) {
@@ -49,6 +51,12 @@ public final class DispatchDeliveryUseCase {
 
     public DispatchDeliveryUseCase(AlertRepository alerts, DeliveryRepository deliveries, Map<Channel, NotificationChannel> channels,
             ContactDirectory contacts, RetryScheduler scheduler, Clock clock, List<Duration> retryDelays) {
+        this(alerts, deliveries, channels, contacts, scheduler, clock, retryDelays, DeliveryMetrics.NONE);
+    }
+
+    public DispatchDeliveryUseCase(AlertRepository alerts, DeliveryRepository deliveries, Map<Channel, NotificationChannel> channels,
+            ContactDirectory contacts, RetryScheduler scheduler, Clock clock, List<Duration> retryDelays, DeliveryMetrics metrics) {
+        this.metrics = metrics;
         this.retryDelays = List.copyOf(retryDelays);
         this.alerts = alerts;
         this.deliveries = deliveries;
@@ -86,6 +94,8 @@ public final class DispatchDeliveryUseCase {
             case SENT -> {
                 var sent = delivery.sent(result.providerMessageId(), clock.instant());
                 deliveries.update(sent);
+                metrics.result(channel, "sent");
+                metrics.alertToDelivery(channel, Duration.between(alert.detectedAt(), clock.instant()));
                 yield DispatchResult.of(Kind.SENT, sent);
             }
             case PERMANENT_FAILURE -> finalFailure(delivery, result.error());
@@ -96,6 +106,7 @@ public final class DispatchDeliveryUseCase {
     private DispatchResult finalFailure(Delivery delivery, String error) {
         var failed = delivery.failed(error, clock.instant());
         deliveries.update(failed);
+        metrics.result(delivery.channel(), "failed");
         return DispatchResult.of(Kind.FAILED, failed);
     }
 
@@ -106,11 +117,14 @@ public final class DispatchDeliveryUseCase {
             var updated = delivery.retryScheduled(error, now);
             deliveries.update(updated);
             scheduler.scheduleRetry(updated, delay);
+            metrics.result(delivery.channel(), "retry");
             return DispatchResult.of(Kind.RETRY_SCHEDULED, updated);
         }
         var failed = delivery.failed(error, now);
         deliveries.update(failed);
         scheduler.sendToDeadLetter(failed, error);
+        metrics.result(delivery.channel(), "failed");
+        metrics.deadLettered(delivery.channel().name());
         var fallbacks = new ArrayList<Delivery>();
         ChannelPolicy.fallbackFor(delivery.channel(), alert.severity()).ifPresent(fallbackChannel -> {
             var fallback = Delivery.pending(alert.alertId(), fallbackChannel, now);

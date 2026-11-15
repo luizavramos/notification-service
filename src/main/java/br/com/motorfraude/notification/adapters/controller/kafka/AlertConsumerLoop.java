@@ -4,6 +4,7 @@ import br.com.motorfraude.contracts.FraudAlert;
 import br.com.motorfraude.contracts.JsonCodec;
 import br.com.motorfraude.contracts.Schemas;
 import br.com.motorfraude.notification.adapters.gateway.kafka.KafkaRetryScheduler;
+import br.com.motorfraude.notification.application.gateway.DeliveryMetrics;
 import br.com.motorfraude.notification.application.usecase.RegisterAlertUseCase;
 import br.com.motorfraude.notification.domain.Channel;
 import br.com.motorfraude.notification.domain.Delivery;
@@ -36,10 +37,12 @@ public final class AlertConsumerLoop {
     private final KafkaRetryScheduler deadLetters;
     private final Clock clock;
     private final Duration failureBackoff;
+    private final DeliveryMetrics metrics;
     private final Map<TopicPartition, Instant> resumeAt = new HashMap<>();
 
     public AlertConsumerLoop(Consumer<String, String> consumer, String topic, RegisterAlertUseCase register, BiConsumer<String, Channel> dispatcher,
-            Executor executor, KafkaRetryScheduler deadLetters, Clock clock, Duration failureBackoff) {
+            Executor executor, KafkaRetryScheduler deadLetters, Clock clock, Duration failureBackoff, DeliveryMetrics metrics) {
+        this.metrics = metrics;
         this.consumer = consumer;
         this.topic = topic;
         this.register = register;
@@ -98,6 +101,7 @@ public final class AlertConsumerLoop {
         } catch (RuntimeException e) {
             deadLetters.sendRawToDeadLetter(record.key(), record.value() == null ? null : record.value().getBytes(java.nio.charset.StandardCharsets.UTF_8),
                     record.topic(), record.partition(), record.offset(), String.valueOf(e.getMessage()));
+            metrics.deadLettered("INVALID_ALERT");
             return;
         }
         toDispatch.addAll(register.register(alert).toDispatch());

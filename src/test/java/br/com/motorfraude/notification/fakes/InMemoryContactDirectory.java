@@ -16,6 +16,10 @@ public final class InMemoryContactDirectory implements ContactDirectory {
         contacts.put(accountId, contact);
     }
 
+    public void clear() {
+        contacts.clear();
+    }
+
     public void unavailable(boolean value) {
         this.unavailable = value;
     }
