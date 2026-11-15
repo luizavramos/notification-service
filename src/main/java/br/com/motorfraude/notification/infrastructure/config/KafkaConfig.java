@@ -51,7 +51,7 @@ public class KafkaConfig {
         var runners = new java.util.ArrayList<ConsumerLoopRunner>();
 
         var alerts = new KafkaConsumer<String, String>(consumerConfig(kafka, kafka.groupId(), "notification-alerts"));
-        var alertLoop = new AlertConsumerLoop(alerts, kafka.alertsTopic(), register, dispatcher::dispatch, Executors.newVirtualThreadPerTaskExecutor(),
+        var alertLoop = new AlertConsumerLoop(alerts, kafka.alertsTopic(), register, dispatcher::dispatch, new BoundedExecutor(Executors.newVirtualThreadPerTaskExecutor(), properties.resilience().maxConcurrentCalls()),
                 deadLetters, clock, kafka.failureBackoff(), metrics);
         runners.add(new ConsumerLoopRunner("alert-consumer", alerts, alertLoop::initialize, alertLoop::pollOnce));
 

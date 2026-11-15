@@ -47,6 +47,7 @@ public class NotificationConfig {
     @Bean
     HttpClient providerHttpClient(NotificationProperties properties) {
         return HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
                 .executor(Executors.newVirtualThreadPerTaskExecutor())
                 .connectTimeout(properties.providers().antifraud().timeout())
                 .build();
