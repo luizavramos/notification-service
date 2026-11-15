@@ -6,6 +6,10 @@ spring:
       enabled: true
   main:
     banner-mode: off
+  datasource:
+    url: ${ALERTS_DB_URL:jdbc:postgresql://localhost:5432/alerts_db}
+    username: ${ALERTS_DB_USER:motorfraude}
+    password: ${ALERTS_DB_PASSWORD:motorfraude}
 
 server:
   port: 8085
@@ -20,6 +24,9 @@ management:
       probes:
         enabled: true
       show-components: always
+      group:
+        readiness:
+          include: readinessState,db
   tracing:
     sampling:
       probability: 1.0

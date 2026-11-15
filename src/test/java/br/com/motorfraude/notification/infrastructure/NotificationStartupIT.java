@@ -14,9 +14,29 @@ import org.springframework.beans.factory.config.YamlPropertiesFactoryBean;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.env.Environment;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-class NotificationStartupTest {
+@Testcontainers
+class NotificationStartupIT {
+
+    @Container
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16.16");
+
+    @DynamicPropertySource
+    static void database(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.datasource.username", POSTGRES::getUsername);
+        registry.add("spring.datasource.password", POSTGRES::getPassword);
+    }
+
+    @Autowired
+    JdbcTemplate jdbc;
 
     @Value("${local.server.port}")
     int port;
@@ -45,6 +65,14 @@ class NotificationStartupTest {
 
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).contains("jvm_memory_used_bytes").contains("service=\"notification-service\"");
+    }
+
+    @Test
+    @DisplayName("as migrações do Flyway rodam na subida e criam as tabelas do plano")
+    void migracoes() {
+        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where success", Long.class)).isGreaterThanOrEqualTo(1);
+        assertThat(jdbc.queryForList("select tablename from pg_tables where schemaname = 'public'", String.class))
+                .contains("alerts", "notification_delivery", "alert_feedback");
     }
 
     @Test

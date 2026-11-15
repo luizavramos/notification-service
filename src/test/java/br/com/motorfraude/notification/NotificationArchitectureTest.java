@@ -19,4 +19,17 @@ class NotificationArchitectureTest {
 
         CleanArchitectureRules.assertAll(classes, BASE);
     }
+
+    @Test
+    @DisplayName("o nosso código usa só Jackson 3: o Jackson 2 está no classpath apenas por causa do Flyway")
+    void semJackson2() {
+        var classes = new ClassFileImporter()
+                .withImportOption(new ImportOption.DoNotIncludeTests())
+                .withImportOption(new ImportOption.DoNotIncludeJars())
+                .importPackages(BASE);
+
+        com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses()
+                .should().dependOnClassesThat().resideInAnyPackage("com.fasterxml.jackson.databind..", "com.fasterxml.jackson.core..")
+                .check(classes);
+    }
 }

@@ -41,7 +41,38 @@
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>tools.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
 
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>br.com.motorfraude</groupId>
             <artifactId>platform-commons</artifactId>
@@ -88,6 +119,27 @@
                         <goals>
                             <goal>repackage</goal>
                         </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <!-- Exceção à regra "sem Jackson 2": o Flyway usa o Jackson 2 internamente. O nosso código só usa o Jackson 3, o que o
+                     ArchUnit confere. Mesma exceção do rule-management. -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>enforce-platform</id>
+                        <configuration>
+                            <rules>
+                                <bannedDependencies>
+                                    <includes>
+                                        <include>com.fasterxml.jackson.core:jackson-databind</include>
+                                        <include>com.fasterxml.jackson.core:jackson-core</include>
+                                    </includes>
+                                </bannedDependencies>
+                            </rules>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>
