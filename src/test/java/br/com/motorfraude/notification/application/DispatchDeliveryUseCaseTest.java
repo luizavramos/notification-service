@@ -249,6 +249,22 @@ class DispatchDeliveryUseCaseTest {
     }
 
     @Test
+    @DisplayName("os atrasos do retry são configuráveis: com 2 atrasos curtos, a 3ª falha já esgota")
+    void atrasosConfiguraveis() {
+        var custom = new DispatchDeliveryUseCase(alerts, deliveries, Map.of(Channel.ANTIFRAUD_WEBHOOK, webhook), contacts, scheduler,
+                Clock.fixed(NOW, ZoneOffset.UTC), List.of(Duration.ofSeconds(1), Duration.ofSeconds(2)));
+        seed(medium("a1"), Channel.ANTIFRAUD_WEBHOOK);
+        webhook.alwaysFails("503");
+
+        custom.dispatch("a1", Channel.ANTIFRAUD_WEBHOOK);
+        custom.dispatch("a1", Channel.ANTIFRAUD_WEBHOOK);
+        var third = custom.dispatch("a1", Channel.ANTIFRAUD_WEBHOOK);
+
+        assertThat(scheduler.retries).extracting(RecordingRetryScheduler.Scheduled::delay).containsExactly(Duration.ofSeconds(1), Duration.ofSeconds(2));
+        assertThat(third.kind()).isEqualTo(Kind.DEAD_LETTERED);
+    }
+
+    @Test
     @DisplayName("canal sem adaptador configurado é erro de configuração, não falha silenciosa")
     void semAdaptador() {
         seed(medium("a1"), Channel.ANTIFRAUD_WEBHOOK);

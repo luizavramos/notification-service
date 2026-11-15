@@ -29,7 +29,8 @@ class RegisterAlertUseCaseTest {
 
     @BeforeEach
     void setUp() {
-        useCase = new RegisterAlertUseCase(alerts, deliveries, SuppressionPolicy.defaultPolicy(), Clock.fixed(NOW, ZoneOffset.UTC));
+        useCase = new RegisterAlertUseCase(alerts, deliveries, SuppressionPolicy.defaultPolicy(), new br.com.motorfraude.notification.fakes.DirectUnitOfWork(),
+                Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     private DeliveryStatus statusOf(String alertId, Channel channel) {

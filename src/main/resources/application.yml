@@ -26,7 +26,7 @@ management:
       show-components: always
       group:
         readiness:
-          include: readinessState,db
+          include: readinessState,db,alertConsumers
   tracing:
     sampling:
       probability: 1.0
@@ -42,3 +42,50 @@ management:
   metrics:
     tags:
       service: notification-service
+
+notification:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    alerts-topic: fraud-alerts.v1
+    group-id: notification-service
+    dlq-topic: alerts.dlq
+    failure-backoff: 5s
+  providers:
+    antifraud:
+      url: ${ANTIFRAUD_URL:http://localhost:18090/antifraud-legacy/webhooks/fraud-alerts}
+      secret: ${ANTIFRAUD_SECRET:segredo-de-desenvolvimento-troque-fora-daqui}
+      timeout: 2s
+    push:
+      url: ${PUSH_URL:http://localhost:18090/push-provider/v1/push}
+      timeout: 2s
+    email:
+      url: ${EMAIL_URL:http://localhost:18090/email-provider/v1/email}
+      timeout: 2s
+    sms:
+      url: ${SMS_URL:http://localhost:18090/sms-provider/v1/sms}
+      timeout: 2s
+    contacts:
+      url: ${CONTACTS_URL:http://localhost:18090/contacts}
+      timeout: 2s
+  retry:
+    steps:
+      - { delay: 1m, topic: alerts.retry.1m }
+      - { delay: 5m, topic: alerts.retry.5m }
+      - { delay: 30m, topic: alerts.retry.30m }
+  resilience:
+    max-attempts: 3
+    initial-backoff: 200ms
+    backoff-multiplier: 2.0
+    jitter: 0.5
+    sliding-window-size: 20
+    minimum-calls: 10
+    failure-rate-threshold: 50
+    open-state-wait: 30s
+    half-open-calls: 3
+    max-concurrent-calls: 50
+    bulkhead-max-wait: 100ms
+  suppression-window: 10m
+  reconciler:
+    interval: 1m
+    grace: 2m
+    limit: 100

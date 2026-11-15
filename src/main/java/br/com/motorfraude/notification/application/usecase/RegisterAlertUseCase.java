@@ -4,6 +4,7 @@ import br.com.motorfraude.contracts.FraudAlert;
 import br.com.motorfraude.contracts.Severity;
 import br.com.motorfraude.notification.application.gateway.AlertRepository;
 import br.com.motorfraude.notification.application.gateway.DeliveryRepository;
+import br.com.motorfraude.notification.application.gateway.UnitOfWork;
 import br.com.motorfraude.notification.domain.ChannelPolicy;
 import br.com.motorfraude.notification.domain.Delivery;
 import br.com.motorfraude.notification.domain.SuppressionPolicy;
@@ -20,9 +21,12 @@ public final class RegisterAlertUseCase {
     private final AlertRepository alerts;
     private final DeliveryRepository deliveries;
     private final SuppressionPolicy suppression;
+    private final UnitOfWork unitOfWork;
     private final Clock clock;
 
-    public RegisterAlertUseCase(AlertRepository alerts, DeliveryRepository deliveries, SuppressionPolicy suppression, Clock clock) {
+    public RegisterAlertUseCase(AlertRepository alerts, DeliveryRepository deliveries, SuppressionPolicy suppression, UnitOfWork unitOfWork,
+            Clock clock) {
+        this.unitOfWork = unitOfWork;
         this.alerts = alerts;
         this.deliveries = deliveries;
         this.suppression = suppression;
@@ -30,11 +34,13 @@ public final class RegisterAlertUseCase {
     }
 
     public Registration register(FraudAlert alert) {
-        boolean inserted = alerts.insertIfAbsent(alert);
-        if (inserted) {
-            createDeliveries(alert);
-        }
-        return new Registration(inserted, deliveries.pendingOf(alert.alertId()));
+        return unitOfWork.inTransaction(() -> {
+            boolean inserted = alerts.insertIfAbsent(alert);
+            if (inserted) {
+                createDeliveries(alert);
+            }
+            return new Registration(inserted, deliveries.pendingOf(alert.alertId()));
+        });
     }
 
     private void createDeliveries(FraudAlert alert) {

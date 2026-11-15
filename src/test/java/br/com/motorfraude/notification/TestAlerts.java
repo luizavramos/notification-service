@@ -15,6 +15,10 @@ public final class TestAlerts {
     private TestAlerts() {
     }
 
+    public static String id(int n) {
+        return "00000000-0000-5000-8000-%012d".formatted(n);
+    }
+
     public static FraudAlert alert(String alertId, String transactionId, Severity severity, Instant detectedAt) {
         return new FraudAlert(alertId, transactionId, ACCOUNT, severity, severity == Severity.HIGH ? 80 : 50,
                 List.of(new RuleHit("R10", 1, 70, "lista de bloqueio")), 7, ContextCompleteness.FULL, detectedAt.minusMillis(80), detectedAt,

@@ -40,9 +40,16 @@ public final class DispatchDeliveryUseCase {
     private final ContactDirectory contacts;
     private final RetryScheduler scheduler;
     private final Clock clock;
+    private final List<Duration> retryDelays;
 
     public DispatchDeliveryUseCase(AlertRepository alerts, DeliveryRepository deliveries, Map<Channel, NotificationChannel> channels,
             ContactDirectory contacts, RetryScheduler scheduler, Clock clock) {
+        this(alerts, deliveries, channels, contacts, scheduler, clock, RETRY_DELAYS);
+    }
+
+    public DispatchDeliveryUseCase(AlertRepository alerts, DeliveryRepository deliveries, Map<Channel, NotificationChannel> channels,
+            ContactDirectory contacts, RetryScheduler scheduler, Clock clock, List<Duration> retryDelays) {
+        this.retryDelays = List.copyOf(retryDelays);
         this.alerts = alerts;
         this.deliveries = deliveries;
         this.channels = channels;
@@ -94,8 +101,8 @@ public final class DispatchDeliveryUseCase {
 
     private DispatchResult retryable(Delivery delivery, FraudAlert alert, String error) {
         var now = clock.instant();
-        if (delivery.attempts() < RETRY_DELAYS.size()) {
-            var delay = RETRY_DELAYS.get(delivery.attempts());
+        if (delivery.attempts() < retryDelays.size()) {
+            var delay = retryDelays.get(delivery.attempts());
             var updated = delivery.retryScheduled(error, now);
             deliveries.update(updated);
             scheduler.scheduleRetry(updated, delay);
