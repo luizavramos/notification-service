@@ -1,9 +1,18 @@
 package br.com.motorfraude.notification.infrastructure.config;
 
+import br.com.motorfraude.notification.adapters.gateway.micrometer.MicrometerFeedbackMetrics;
+import br.com.motorfraude.notification.adapters.gateway.postgres.JdbcAlertQuery;
 import br.com.motorfraude.notification.adapters.gateway.postgres.JdbcAlertRepository;
 import br.com.motorfraude.notification.adapters.gateway.postgres.JdbcDeliveryRepository;
+import br.com.motorfraude.notification.adapters.gateway.postgres.JdbcFeedbackRepository;
+import br.com.motorfraude.notification.application.gateway.AlertQuery;
 import br.com.motorfraude.notification.application.gateway.AlertRepository;
 import br.com.motorfraude.notification.application.gateway.DeliveryRepository;
+import br.com.motorfraude.notification.application.gateway.FeedbackMetrics;
+import br.com.motorfraude.notification.application.gateway.FeedbackRepository;
+import br.com.motorfraude.notification.application.usecase.ListAlertsUseCase;
+import br.com.motorfraude.notification.application.usecase.RegisterFeedbackUseCase;
+import io.micrometer.core.instrument.MeterRegistry;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.springframework.context.annotation.Bean;
@@ -26,5 +35,30 @@ public class PersistenceConfig {
     @Bean
     DeliveryRepository deliveryRepository(JdbcClient jdbc, Flyway flyway) {
         return new JdbcDeliveryRepository(jdbc);
+    }
+
+    @Bean
+    AlertQuery alertQuery(JdbcClient jdbc, Flyway flyway) {
+        return new JdbcAlertQuery(jdbc);
+    }
+
+    @Bean
+    FeedbackRepository feedbackRepository(JdbcClient jdbc, Flyway flyway) {
+        return new JdbcFeedbackRepository(jdbc);
+    }
+
+    @Bean
+    FeedbackMetrics feedbackMetrics(MeterRegistry registry) {
+        return new MicrometerFeedbackMetrics(registry);
+    }
+
+    @Bean
+    ListAlertsUseCase listAlertsUseCase(AlertQuery query) {
+        return new ListAlertsUseCase(query);
+    }
+
+    @Bean
+    RegisterFeedbackUseCase registerFeedbackUseCase(AlertRepository alerts, FeedbackRepository feedback, FeedbackMetrics metrics) {
+        return new RegisterFeedbackUseCase(alerts, feedback, metrics);
     }
 }
