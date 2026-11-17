@@ -1,9 +1,4 @@
--- notification-service (spec 005): alertas, entregas por canal e feedback do analista.
 
--- Alertas, particionados por dia de detected_at (a retenção é um DROP da partição velha).
--- No Postgres, PRIMARY KEY e UNIQUE de tabela particionada precisam incluir a chave de partição; por isso a unicidade aqui é por
--- (alert_id, detected_at) e (transaction_id, detected_at). A idempotência do EFEITO (uma entrega por canal) não depende disso: ela vem
--- da PK (alert_id, channel) de notification_delivery, que não é particionada.
 CREATE TABLE alerts (
     alert_id             text        NOT NULL,
     transaction_id       text        NOT NULL,
@@ -24,7 +19,6 @@ CREATE TABLE alerts (
 CREATE INDEX alerts_account_detected_idx ON alerts (account_token, detected_at DESC);
 CREATE INDEX alerts_alert_id_idx ON alerts (alert_id);
 
--- Cria a partição do dia (UTC) se ainda não existir; seguro contra duas instâncias criando a mesma ao mesmo tempo.
 CREATE FUNCTION ensure_alert_partition(day date) RETURNS void
 LANGUAGE plpgsql AS $$
 DECLARE
@@ -38,7 +32,6 @@ BEGIN
 END;
 $$;
 
--- Uma entrega por alerta e por canal: a chave que garante "nunca avisar duas vezes".
 CREATE TABLE notification_delivery (
     alert_id        text        NOT NULL,
     channel         text        NOT NULL CHECK (channel IN ('ANTIFRAUD_WEBHOOK', 'PUSH', 'EMAIL', 'SMS')),
@@ -51,10 +44,8 @@ CREATE TABLE notification_delivery (
     PRIMARY KEY (alert_id, channel)
 );
 
--- Para o reconciliador (entregas PENDING paradas).
 CREATE INDEX notification_delivery_status_updated_idx ON notification_delivery (status, updated_at);
 
--- Rótulos do analista para calibrar as regras.
 CREATE TABLE alert_feedback (
     id         bigserial   PRIMARY KEY,
     alert_id   text        NOT NULL,
